@@ -1,0 +1,172 @@
+﻿<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>practices-for-storing-sensitive-data</title>
+  <link rel="stylesheet" href="https://stackedit.io/style.css" />
+</head>
+
+<body class="stackedit">
+  <div class="stackedit__left">
+    <div class="stackedit__toc">
+      
+<ul>
+<li><a href="#practices-for-secrets-handling">Practices for secrets handling</a></li>
+<li><a href="#introduction">1. Introduction</a></li>
+<li><a href="#grading-secrets">2. Grading secrets</a></li>
+<li><a href="#a-place-for-secrets">3. A place for secrets</a></li>
+<li><a href="#handling-of-secrets">4. Handling of secrets</a></li>
+<li><a href="#handling-aws-config">5. Handling AWS config</a></li>
+<li><a href="#gpg-for-encrypting-and-password-manager">6. GPG for encrypting and password manager</a></li>
+<li><a href="#pass-for-password-storage">7.  pass for password-storage</a></li>
+<li><a href="#handling-mysql-connections">8. Handling MySQL connections</a></li>
+<li><a href="#ssh-for-transit">8.  SSH for transit</a></li>
+</ul>
+
+    </div>
+  </div>
+  <div class="stackedit__right">
+    <div class="stackedit__html">
+      <h1 id="practices-for-secrets-handling">Practices for secrets handling</h1>
+<p>Written by Stefan, on 10 September 2024.<br>
+Tags: <code>opsec</code> <code>linux</code> <code>mac</code></p>
+<blockquote>
+<p>More to come!</p>
+</blockquote>
+<h1 id="introduction">1. Introduction</h1>
+<p>If you’re a developer or admin, you accumalate all sorts of files on your devices.<br>
+Some of them contain secrets that should not stay on your device.<br>
+Some of them contain keys to someone’s kingdom.<br>
+Devices may break, get lost or stolen.  What happens now?<br>
+Over time, such files will pose an ever increasing risk if not handled well.<br>
+Let’s mitigate the risks by understanding and managing our files better.</p>
+<h1 id="grading-secrets">2. Grading secrets</h1>
+<p>By understanding our secrets we can label them and thread them based on their grade(s), for example secret-S0-G0 and so on. This way we avoid having to store the grade information externally.</p>
+<p>Grade by sensitivity</p>
+<ul>
+<li>S0 secrets - grant access to NO sensitive information</li>
+<li>S1 secrets - grant access to sensitive information</li>
+<li>S2 secrets - grant access to a lot of sensitive information</li>
+<li>S3 secrets - grant access to a sensitive information and PII</li>
+<li>etc.</li>
+</ul>
+<p>Grade by access protection</p>
+<ul>
+<li><strong>A0</strong> secrets - are plain readable, maybe encoded</li>
+<li>A1 secrets - require 1 level of access validation</li>
+<li>A2 secrets - require 2 levels of access validation (2nd factor)</li>
+<li>A3 secrets - require 3 levels of access validation (3nd factor)</li>
+<li>A4 secrets - require 3 " " … and location validation (3rd party validating geolocation, IP or similar)</li>
+<li>etc.</li>
+</ul>
+<p>Note:</p>
+<blockquote>
+<p>The difference between A3/A4 does not concern us on our device<br>
+directly but should be kept in mind.</p>
+<p>We don’t distinguish between<br>
+human-readable and encoded (for example, base64)</p>
+<p>Grading may require updating the labels if scope changes</p>
+</blockquote>
+<p>Lets take an ssh key as an example allowing access to a server hosting a public basic page. That’s it. The ssh key is not password protected: <code>my-ssh-key-S0-A0.key</code></p>
+<h1 id="a-place-for-secrets">3. A place for secrets</h1>
+<p>We gather all secret’s locations all in one place.<br>
+A sort of meta folder that points to all locations or at least includes them.</p>
+<p>All locations of secrets should be known. By knowing their locations we can:</p>
+<ul>
+<li>Avoid accidentally mishandling them</li>
+<li>Expire them by safely deleting them (‘shredding’ or ‘wiping’)</li>
+<li>Using our grading to distinguish and manage them better</li>
+</ul>
+<h1 id="handling-of-secrets">4. Handling of secrets</h1>
+<p>A checklist for getting things right</p>
+<ul>
+<li class="task-list-item"><input type="checkbox" class="task-list-item-checkbox" disabled=""> Create a folder <code>secrets</code> in your home folder.</li>
+<li class="task-list-item"><input type="checkbox" class="task-list-item-checkbox" disabled=""> Set the permissions so only you can read and change it</li>
+<li class="task-list-item"><input type="checkbox" class="task-list-item-checkbox" disabled=""> Put all sensitive files files there you wish to expire at one point</li>
+<li class="task-list-item"><input type="checkbox" class="task-list-item-checkbox" disabled=""> Put links to other locations you into the secrets folder</li>
+<li class="task-list-item"><input type="checkbox" class="task-list-item-checkbox" disabled=""> Label files and links according to our grading system</li>
+<li class="task-list-item"><input type="checkbox" class="task-list-item-checkbox" disabled=""> Verify files and folders in place have correct permissions, if not: alert and fix</li>
+<li class="task-list-item"><input type="checkbox" class="task-list-item-checkbox" disabled=""> Using grading system to determine what to expire, when and how</li>
+<li class="task-list-item"><input type="checkbox" class="task-list-item-checkbox" disabled=""> Have a regular task do the expiration and validation / fix of permissions.</li>
+<li class="task-list-item"><input type="checkbox" class="task-list-item-checkbox" disabled=""> Verify regular task ran, using alerting or monitoring</li>
+</ul>
+<p><strong>Warning</strong>:<br>
+Some files cannot be moved to <code>secrets</code> but can still by linked and labled</p>
+<pre><code>ln -s ~/.aws/config ~/secrets/dot-aws-config-S0-A0
+ln -s ~/.aws/credentials ~/secrets/dot-aws-credentials-S3-G4
+</code></pre>
+<h1 id="handling-aws-config">5. Handling AWS config</h1>
+<p>When using AWS on the command line, one option is to use <code>aws-cli</code>, the official CLI client. By default, it allows to add a ‘profile’ - a named config set to use AWS services.</p>
+<p>Such a config is often bound to a username (AccessKey) and password (AccessKeySecret). The <code>aws-cli</code> stores the settings of a profile in <code>~/.aws/credentials</code> .Other config is located in <code>~/.aws/config</code><br>
+Unfortunately <code>~/.aws/credentials</code> needs to be protected better as API calls would<br>
+not require another factor of authentication</p>
+<p>Use <a href="https://github.com/99designs/aws-vault/">aws-vault</a> to store secrets in a trustworthy system keychain requiring the<br>
+keychain password to open it. Also avoids accidental pasting errors and polluting shell history…</p>
+<p>So next time you need to run an AWS command, run:<br>
+<code>aws-vault exec my-aws-profile aws s3 ls</code><br>
+… and it will prompt you interactively for the keychain password.</p>
+<p>To use a MFA device in a shell, add your <code>mfa_serial=MY_MFA_ARN</code> to your <code>~/.aws/config</code><br>
+aws-vault will then prompt you for your MFA token:</p>
+<pre><code>aws-vault exec my-aws-profile -- aws s3 ls
+Enter MFA code for arn:aws:iam::************:mfa/aws-dev:
+
+</code></pre>
+<p><strong>Note</strong>: Some actions (IAM) ONLY work with an MFA device config present</p>
+<h1 id="gpg-for-encrypting-and-password-manager">6. GPG for encrypting and password manager</h1>
+<p>The GPG key unlocks all passwords in the password-store.<br>
+The key can also be used to encrypt sensitive files of grade A0 to make them A2 - GPG key and password required.</p>
+<p>Create a GPG key pair and protect it with a password. Use this key when doing the <code>pass init</code> step for the password-storage.</p>
+<h1 id="pass-for-password-storage">7.  <code>pass</code> for password-storage</h1>
+<p>Handy command line <a href="https://www.passwordstore.org/">program</a> to store, generate and search passwords and other notes. Pretty basic but does the job.  The data resides in <code>~/.password-store</code></p>
+<p>The password-storage is encrypts ‘folders’ automatically using your GPG key.</p>
+<p>It therefore makes all passwords stored A2 - GPG key and GPG key password required to open.</p>
+<blockquote>
+<p>Note: It will be linked to our <code>secrets</code> folder and synched remotely<br>
+to a git repo.</p>
+</blockquote>
+<ul>
+<li>Clone password-store from remote GitHub if locally not present or lost</li>
+<li>Search password with <code>pass find</code> and copy to the clipboard when needed</li>
+<li>Make sure to push local changes to the remote with <code>pass git push</code></li>
+</ul>
+<h1 id="handling-mysql-connections">8. Handling MySQL connections</h1>
+<p>I’m using ‘login-paths’ (a config bundle basically) to connect to MySQL / MariaDB hosts which are stored in <code>~/.my.cnf</code>in binary form.</p>
+<blockquote>
+<p>Note: Of course, secrets can also be plainly stored in the<br>
+password-store. You may want to consider storing a<br>
+connection string in the password-store instead.<br>
+When adding host, user and database it gets<br>
+ugly in password-store quickly</p>
+</blockquote>
+<p>Label the <code>~/.my.cnf</code> as A0, it’s not encrypted.<br>
+Or encrypt / decrypt it on the demand with GPG and label it as  A2 instead.</p>
+<p>For ease of use, create login profiles like so and use them<br>
+<code>mysql_config_editor set --login-path=my-mysql-1 --user=root --host=127.0.0.1 --password</code></p>
+<p><code>mysql_config_editor print --all</code><br>
+<code>mysql --login-path=my-mysql-1</code></p>
+<h1 id="ssh-for-transit">8.  SSH for transit</h1>
+<p>Transferring and backing up our <code>secrets</code> may be required to ensure it’s data safety.<br>
+SSH protects sensitive files in transit.</p>
+<ul>
+<li>Create a ssh keypair with a password. The password acts as a 2nd factor.</li>
+<li>The private key in <code>~/.ssh/id_YOUR_ID</code>can be labeled A1, it has a password</li>
+<li>Store the password in password-store</li>
+<li>Create a <code>~/.ssh/config</code>to connect to hosts easily</li>
+<li>Use <code>ssh-agent</code> to load they key so you don’t have to type the password on every connection with <code>ssh-add ~/.ssh/my-ssh-key.key</code></li>
+</ul>
+<blockquote>
+<p>Note: Also consider the server-side SSH implementation settings</p>
+</blockquote>
+<pre><code>Host backup.*
+  User john
+  ForwardAgent yes
+  IdentityFile ~/.ssh/id_john
+</code></pre>
+
+    </div>
+  </div>
+</body>
+
+</html>
